@@ -214,7 +214,7 @@ func (s *etcd) List(ctx context.Context, key string, filter storage.Filter, obj 
 	return nil
 }
 
-// Create implements storage.Interface.Create
+//CompareAndSet implements storage.Interface.CompareAndSet
 func (s *etcd) CompareAndSet(ctx context.Context, key string, expect proto.Message, update proto.Message) error {
 	key = s.prefix(key)
 
