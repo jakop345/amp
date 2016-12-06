@@ -48,6 +48,8 @@ SERVER := amplifier
 AGENT := amp-agent
 LOGWORKER := amp-log-worker
 GATEWAY := amplifier-gateway
+FUNCTION_LISTENER := amp-function-listener
+FUNCTION_WORKER := amp-function-worker
 
 TAG := latest
 IMAGE := $(OWNER)/amp:$(TAG)
@@ -101,6 +103,8 @@ clean:
 	@rm -f $$(which $(AGENT)) ./$(AGENT)
 	@rm -f $$(which $(LOGWORKER)) ./$(LOGWORKER)
 	@rm -f $$(which $(GATEWAY)) ./$(GATEWAY)
+	@rm -f $$(which $(GATEWAY)) ./$(FUNCTION_LISTENER)
+	@rm -f $$(which $(GATEWAY)) ./$(FUNCTION_WORKER)
 
 install:
 	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(CLI)
@@ -108,6 +112,8 @@ install:
 	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(AGENT)
 	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(LOGWORKER)
 	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(GATEWAY)
+	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(FUNCTION_LISTENER)
+	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(FUNCTION_WORKER)
 
 build:
 	@hack/build $(CLI)
@@ -115,6 +121,8 @@ build:
 	@hack/build $(AGENT)
 	@hack/build $(LOGWORKER)
 	@hack/build $(GATEWAY)
+	@hack/build $(FUNCTION_LISTENER)
+	@hack/build $(FUNCTION_WORKER)
 
 build-server-image:
 	@docker build --build-arg BUILD=$(BUILD) -t appcelerator/$(SERVER):$(TAG) .
@@ -188,6 +196,7 @@ test-unit:
 test-integration:
 	@docker service rm amp-integration-test > /dev/null 2>&1 || true
 	@docker build --build-arg BUILD=$(BUILD) -t appcelerator/amp-integration-test .
+	@docker build -t appcelerator/amp-demo-function examples/functions/demo-function
 	@docker service create --network amp-infra --name amp-integration-test --restart-condition none appcelerator/amp-integration-test make BUILD=$(BUILD) test-integration-host
 	@containerid=""; \
 	while [[ $${containerid} == "" ]] ; do \

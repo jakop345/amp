@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/appcelerator/amp/config"
 	"github.com/appcelerator/amp/data/elasticsearch"
 	"github.com/appcelerator/amp/data/storage"
+	"github.com/appcelerator/amp/pkg/nats-streaming"
 	"github.com/golang/protobuf/proto"
 	"github.com/nats-io/go-nats-streaming"
 	"golang.org/x/net/context"
@@ -15,15 +17,13 @@ import (
 
 const (
 	esIndex = "amp-logs"
-	// NatsLogTopic is the nats channel
-	NatsLogTopic = "amp-logs"
 )
 
 // Logs is used to implement log.LogServer
 type Server struct {
-	Es    *elasticsearch.Elasticsearch
-	Store storage.Interface
-	Nats  stan.Conn
+	Es            *elasticsearch.Elasticsearch
+	Store         storage.Interface
+	NatsStreaming ns.NatsStreaming
 }
 
 // Get implements log.LogServer
@@ -94,7 +94,7 @@ func (s *Server) Get(ctx context.Context, in *GetRequest) (*GetReply, error) {
 // GetStream implements log.LogServer
 func (s *Server) GetStream(in *GetRequest, stream Logs_GetStreamServer) error {
 	log.Printf("log stream requested: [%v]", in)
-	sub, err := s.Nats.Subscribe(NatsLogTopic, func(msg *stan.Msg) {
+	sub, err := s.NatsStreaming.GetClient().Subscribe(amp.NatsLogsTopic, func(msg *stan.Msg) {
 		entry, err := parseProtoLogEntry(msg.Data)
 		if err != nil {
 			return
