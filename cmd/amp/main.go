@@ -9,6 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	tablePadding = 3
+)
+
 var (
 	// Version is set with a linker flag (see Makefile)
 	Version string

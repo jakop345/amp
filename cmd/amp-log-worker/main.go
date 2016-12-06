@@ -4,6 +4,7 @@ import (
 	"github.com/appcelerator/amp/api/rpc/logs"
 	"github.com/appcelerator/amp/config"
 	"github.com/appcelerator/amp/data/elasticsearch"
+	"github.com/appcelerator/amp/pkg/nats-streaming"
 	"github.com/golang/protobuf/proto"
 	"github.com/nats-io/go-nats-streaming"
 	"golang.org/x/net/context"
@@ -23,11 +24,12 @@ var (
 
 	// Elasticsearch
 	es elasticsearch.Elasticsearch
+
+	// NATS Streaming
+	natsStreaming ns.NatsStreaming
 )
 
 const (
-	clientID  = "amp-log-worker"
-	natsTopic = "amp-logs"
 	esIndex   = "amp-logs"
 	esType    = "amp-log-entry"
 	esMapping = `{
@@ -92,18 +94,21 @@ func main() {
 	}
 	log.Printf("Created index %s\n", esIndex)
 
-	sc, err := stan.Connect(amp.NatsClusterID, clientID, stan.NatsURL(amp.NatsDefaultURL))
+	// NATS
+	hostname, err := os.Hostname()
 	if err != nil {
-		log.Fatalf("Unable to connect to nats on %s: %s", amp.NatsDefaultURL, err)
+		log.Fatalf("Unable to get hostname: %s", err)
 	}
-	log.Printf("Connected to NATS-Streaming at %s\n", amp.NatsDefaultURL)
+	if natsStreaming.Connect(amp.NatsDefaultURL, amp.NatsClusterID, os.Args[0]+"-"+hostname, amp.DefaultTimeout) != nil {
+		log.Fatal(err)
+	}
 
-	_, err = sc.Subscribe(natsTopic, messageHandler, stan.DeliverAllAvailable(), stan.DurableName("amp-logs-durable"))
+	_, err = natsStreaming.GetClient().Subscribe(amp.NatsLogsTopic, messageHandler, stan.DeliverAllAvailable())
 	if err != nil {
-		sc.Close()
-		log.Fatalf("Unable to subscribe to %s topic: %s", natsTopic, err)
+		natsStreaming.Close()
+		log.Fatalf("Unable to subscribe to %s topic: %s", amp.NatsLogsTopic, err)
 	}
-	log.Printf("Listening on amp-logs\n")
+	log.Println("Subscribed to topic:", amp.NatsFunctionTopic)
 
 	// Wait for a SIGINT (perhaps triggered by user with CTRL-C)
 	// Run cleanup when signal is received
@@ -113,7 +118,7 @@ func main() {
 	go func() {
 		for range signalChan {
 			log.Printf("\nReceived an interrupt, unsubscribing and closing connection...\n\n")
-			sc.Close()
+			natsStreaming.Close()
 			cleanupDone <- true
 		}
 	}()

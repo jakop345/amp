@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/appcelerator/amp/api/rpc/logs"
+	"github.com/appcelerator/amp/config"
 	"github.com/docker/docker/api/types"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/context"
@@ -142,7 +143,7 @@ func startReadingLogs(ID string, data *ContainerData) {
 			fmt.Printf("error marshalling log entry: %v", err)
 		}
 
-		_, err = agent.natsClient.PublishAsync("amp-logs", encoded, nil)
+		_, err = agent.natsClient.PublishAsync(amp.NatsLogsTopic, encoded, nil)
 		if err != nil {
 			log.Printf("error sending log entry: %v", err)
 		}

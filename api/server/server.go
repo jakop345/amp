@@ -8,9 +8,7 @@ import (
 
 	// "github.com/appcelerator/amp/api/rpc/build"
 	"fmt"
-	"math/rand"
-	"strconv"
-
+	"github.com/appcelerator/amp/api/rpc/function"
 	"github.com/appcelerator/amp/api/rpc/logs"
 	"github.com/appcelerator/amp/api/rpc/oauth"
 	"github.com/appcelerator/amp/api/rpc/service"
@@ -22,9 +20,8 @@ import (
 	"github.com/appcelerator/amp/data/influx"
 	"github.com/appcelerator/amp/data/storage/etcd"
 	"github.com/docker/docker/client"
-	"github.com/nats-io/go-nats-streaming"
-	"github.com/nats-io/nats"
 	"google.golang.org/grpc"
+	"os"
 )
 
 const (
@@ -63,9 +60,9 @@ func Start(config Config) {
 	s := grpc.NewServer()
 	// project.RegisterProjectServer(s, &project.Service{})
 	logs.RegisterLogsServer(s, &logs.Server{
-		Es:    &runtime.Elasticsearch,
-		Store: runtime.Store,
-		Nats:  runtime.Nats,
+		Es:            &runtime.Elasticsearch,
+		Store:         runtime.Store,
+		NatsStreaming: runtime.NatsStreaming,
 	})
 	stats.RegisterStatsServer(s, &stats.Stats{
 		Influx: runtime.Influx,
@@ -84,8 +81,12 @@ func Start(config Config) {
 		runtime.Docker,
 	))
 	topic.RegisterTopicServer(s, &topic.Server{
-		Store: runtime.Store,
-		Nats:  runtime.Nats,
+		Store:         runtime.Store,
+		NatsStreaming: runtime.NatsStreaming,
+	})
+	function.RegisterFunctionServer(s, &function.Server{
+		Store:         runtime.Store,
+		NatsStreaming: runtime.NatsStreaming,
 	})
 
 	// start listening
@@ -94,7 +95,7 @@ func Start(config Config) {
 		log.Fatalf("amplifer is unable to listen on: %s\n%v", config.Port[1:], err)
 	}
 	log.Printf("amplifier is listening on port %s\n", config.Port[1:])
-	s.Serve(lis)
+	log.Fatalln(s.Serve(lis))
 }
 
 func initEtcd(config Config) error {
@@ -127,19 +128,14 @@ func initInfluxDB(config Config) error {
 }
 
 func initNats(config Config) error {
-	log.Printf("Connecting to NATS-Streaming at %s\n", config.NatsURL)
-	var err error
-
-	nc, err := nats.Connect(config.NatsURL, nats.Timeout(defaultTimeOut))
+	// NATS
+	hostname, err := os.Hostname()
 	if err != nil {
-		fmt.Errorf("amplifer is unable to connect to NATS on: %s\n%v", config.NatsURL, err)
+		log.Fatalf("Unable to get hostname: %s", err)
 	}
-
-	runtime.Nats, err = stan.Connect(amp.NatsClusterID, natsClientID+strconv.Itoa(rand.Int()), stan.NatsConn(nc), stan.ConnectWait(defaultTimeOut))
-	if err != nil {
-		return fmt.Errorf("amplifer is unable to connect to NATS-Streaming on: %s\n%v", config.NatsURL, err)
+	if runtime.NatsStreaming.Connect(config.NatsURL, amp.NatsClusterID, os.Args[0]+"-"+hostname, amp.DefaultTimeout) != nil {
+		log.Fatal(err)
 	}
-	log.Printf("Connected to NATS-Streaming at %s\n", config.NatsURL)
 	return nil
 }
 
