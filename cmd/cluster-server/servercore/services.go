@@ -5,6 +5,8 @@ import (
 	"github.com/appcelerator/amp/cmd/cluster-agent/agentgrpc"
 	"github.com/appcelerator/amp/cmd/cluster-server/servergrpc"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"strings"
 	"time"
@@ -23,14 +25,14 @@ func (s *ClusterServer) GetClientStream(stream servergrpc.ClusterServerService_G
 	})
 	if err != nil {
 		logf.error("Error sending back ack to client %v\n", err)
-		return err
+		return grpc.Errorf(codes.Internal, "%v\n", err)
 	}
 	logf.debug("Client id=%s\n", clientID)
 	for {
 		mes, err := stream.Recv()
 		if err != nil {
 			delete(s.clientMap, clientID)
-			return fmt.Errorf("Stream Server-client ended: %v\n", err)
+			return grpc.Errorf(codes.Internal, "Stream Server-client ended: %v\n", err)
 		}
 		logf.debug("received client message: %v\n", mes)
 	}
@@ -47,12 +49,12 @@ func (s *ClusterServer) RegisterAgent(ctx context.Context, req *servergrpc.Regis
 	md, exist := metadata.FromContext(ctx)
 	if !exist {
 		logf.error("RegisterAgent %s no token found", req.Id)
-		return nil, fmt.Errorf("Invalid token")
+		return nil, grpc.Errorf(codes.NotFound, "Token not found")
 	}
 	agent.token = md["token"][0]
 	if err := s.connectBackAgent(agent); err != nil {
 		logf.error("RegisterAgent %s connect back error: %v", req.Id, err)
-		return nil, err
+		return nil, grpc.Errorf(codes.Internal, "%v\n", err)
 	}
 	s.updateAgentInfo(ctx, agent)
 	s.agentMap[req.NodeId] = agent
@@ -64,7 +66,7 @@ func (s *ClusterServer) AgentHealth(ctx context.Context, req *servergrpc.AgentHe
 	agent, ok := s.agentMap[req.Id]
 	if !ok {
 		logf.warn("Received heartbeat from a not registered agent: %s\n", req.Id)
-		return nil, fmt.Errorf("Not registered")
+		return nil, grpc.Errorf(codes.FailedPrecondition, "Agent not registered")
 	}
 	agent.lastBeat = time.Now()
 	return &servergrpc.ServerRet{}, nil
@@ -73,7 +75,7 @@ func (s *ClusterServer) AgentHealth(ctx context.Context, req *servergrpc.AgentHe
 func (s *ClusterServer) updateAgentInfo(ctx context.Context, agent *Agent) error {
 	node, _, err := s.dockerClient.NodeInspectWithRaw(ctx, agent.nodeID)
 	if err != nil {
-		return err
+		return grpc.Errorf(codes.Internal, "%v", err)
 	}
 	agent.nodeID = node.ID
 	agent.role = string(node.Spec.Role)
@@ -96,7 +98,7 @@ func (s *ClusterServer) GetNodesInfo(ctx context.Context, req *servergrpc.GetNod
 	if req.Node != "" {
 		agent, ok := s.agentMap[req.Node]
 		if !ok {
-			return nil, fmt.Errorf("Node %s doesn't exist or is not registered", agent.nodeName)
+			return nil, grpc.Errorf(codes.NotFound, "Node %s doesn't exist or is not registered", agent.nodeName)
 		}
 		inf := s.getNodeInfo(ctx, req, agent)
 		ret.Nodes = append(ret.Nodes, inf)
@@ -156,7 +158,7 @@ func (s *ClusterServer) PurgeNodes(ctx context.Context, req *servergrpc.PurgeNod
 	if req.Node != "" {
 		agent, ok := s.agentMap[req.Node]
 		if !ok {
-			return nil, fmt.Errorf("Node %s doesn't exist or is not registered", agent.nodeName)
+			return nil, grpc.Errorf(codes.NotFound, "Node %s doesn't exist or is not registered", agent.nodeName)
 		}
 		aret := s.purgeNode(ctx, req, agent)
 		sret.Agents = append(sret.Agents, aret)
@@ -198,7 +200,7 @@ func (s *ClusterServer) AmpMonitor(tx context.Context, req *servergrpc.AmpReques
 	}
 	lineList, err := manager.Monitor(getAMPInfrastructureStack(manager))
 	if err != nil {
-		return nil, fmt.Errorf("Monitor error: %v", err)
+		return nil, grpc.Errorf(codes.Internal, "Monitor error: %v", err)
 	}
 	return &servergrpc.AmpMonitorAnswers{Outputs: *lineList}, nil
 }
@@ -207,7 +209,7 @@ func (s *ClusterServer) AmpMonitor(tx context.Context, req *servergrpc.AmpReques
 func (s *ClusterServer) AmpPull(tx context.Context, req *servergrpc.AmpRequest) (*servergrpc.AmpRet, error) {
 	manager := &AMPInfraManager{}
 	if err := manager.Init(s, req.ClientId, "Pulling AMP images"); err != nil {
-		return nil, err
+		return nil, grpc.Errorf(codes.Internal, "%v", err)
 	}
 	manager.Verbose = req.Verbose
 	manager.Silence = req.Silence
@@ -269,7 +271,7 @@ func (s *ClusterServer) GetAmpStatus(tx context.Context, req *servergrpc.AmpRequ
 func (s *ClusterServer) AmpStart(tx context.Context, req *servergrpc.AmpRequest) (*servergrpc.AmpRet, error) {
 	manager := &AMPInfraManager{}
 	if err := manager.Init(s, req.ClientId, "Starting AMP platform"); err != nil {
-		return nil, err
+		return nil, grpc.Errorf(codes.Internal, "%v", err)
 	}
 	manager.Verbose = req.Verbose
 	manager.Silence = req.Silence
@@ -291,7 +293,7 @@ func (s *ClusterServer) AmpStart(tx context.Context, req *servergrpc.AmpRequest)
 		if err := manager.Stop(stack); err != nil {
 			logf.error("Error stopting amp at (2): %v\n", err)
 		}
-		return nil, fmt.Errorf("Start error: %v\n", err)
+		return nil, grpc.Errorf(codes.Internal, "Start error: %v\n", err)
 	}
 	return &servergrpc.AmpRet{}, nil
 }
@@ -313,7 +315,7 @@ func (s *ClusterServer) AmpStop(tx context.Context, req *servergrpc.AmpRequest) 
 		return &servergrpc.AmpRet{}, nil
 	}
 	if err := manager.Stop(stack); err != nil {
-		return nil, fmt.Errorf("Stop error: %v\n", err)
+		return nil, grpc.Errorf(codes.Internal, "Stop error: %v\n", err)
 	}
 	return &servergrpc.AmpRet{}, nil
 }
