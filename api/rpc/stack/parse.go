@@ -6,6 +6,8 @@ import (
 
 	"github.com/appcelerator/amp/api/rpc/service"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"gopkg.in/yaml.v2"
 )
 
@@ -68,7 +70,7 @@ func ParseStackfile(ctx context.Context, in string) (*Stack, error) {
 	var stack = &Stack{}
 	specs, err := parseStack([]byte(in))
 	if err != nil {
-		return nil, err
+		return nil, grpc.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	networkMap, err := copyNetworks(stack, specs.Networks)
 	if err != nil {
@@ -98,7 +100,7 @@ func copyNetworks(stack *Stack, specs map[string]networkSpec) (map[string]string
 		} else if ext, ok := spec.External.(bool); ok {
 			external = fmt.Sprintf("%t", ext)
 		} else if spec.External != nil {
-			return networkMap, fmt.Errorf("Invalid syntax near networks: %s: external\n", name)
+			return networkMap, grpc.Errorf(codes.InvalidArgument, "Invalid syntax near networks: %s: external\n", name)
 		}
 		stack.Networks = append(stack.Networks, &NetworkSpec{
 			External:   external,
@@ -225,13 +227,13 @@ func copyServices(stack *Stack, specs map[string]serviceSpec, networkMap map[str
 		case "global":
 			if replicas != 0 {
 				// global mode can't specify replicas (only allowed 1 per node)
-				return fmt.Errorf("replicas can only be used with replicated mode")
+				return grpc.Errorf(codes.InvalidArgument, "replicas can only be used with replicated mode")
 			}
 			swarmMode = &service.ServiceSpec_Global{
 				Global: &service.GlobalService{},
 			}
 		default:
-			return fmt.Errorf("invalid option for mode: %s", mode)
+			return grpc.Errorf(codes.InvalidArgument, "invalid option for mode: %s", mode)
 		}
 
 		// add custom network connection
