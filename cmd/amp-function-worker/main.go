@@ -117,8 +117,6 @@ func main() {
 	streamCtx, cancel := context.WithTimeout(ctx, amp.DefaultTimeout/2)
 	defer cancel()
 	handleStreams(streamCtx, stdIn, stdOut, stdErr, attachment)
-	stdOut.Flush()
-	stdErr.Flush()
 	log.Println("output:", string(stdOutBuffer.Bytes()))
 
 	// Wait for a SIGINT (perhaps triggered by user with CTRL-C)
@@ -160,13 +158,6 @@ func processMessage(msg *stan.Msg) {
 	}
 	log.Println("Created container:", container.ID)
 
-	// Start
-	if err = containerStart(ctx, container.ID); err != nil {
-		log.Println("error starting container:", err)
-		return
-	}
-	log.Println("Function call executed")
-
 	// Attach container streams
 	attachment, err := containerAttach(ctx, container.ID)
 	if err != nil {
@@ -191,8 +182,18 @@ func processMessage(msg *stan.Msg) {
 	streamCtx, cancel := context.WithTimeout(ctx, amp.DefaultTimeout/2)
 	defer cancel()
 	handleStreams(streamCtx, stdIn, stdOut, stdErr, attachment)
-	stdOut.Flush()
-	stdErr.Flush()
+
+	// Start
+	if err = containerStart(ctx, container.ID); err != nil {
+		log.Println("error starting container:", err)
+		return
+	}
+	log.Println("Function call executed")
+
+	_, err = docker.ContainerWait(ctx, container.ID)
+	if err != nil {
+		panic(err)
+	}
 
 	// Post response to NATS
 	functionReturn := function.FunctionReturn{
@@ -224,7 +225,6 @@ func containerCreate(ctx context.Context, image string) (container.ContainerCrea
 		OpenStdin:    true,
 		AttachStdin:  true,
 		AttachStdout: true,
-		AttachStderr: true,
 		StdinOnce:    true,
 	}
 	hostConfig := &container.HostConfig{}
@@ -236,7 +236,6 @@ func containerAttach(ctx context.Context, containerID string) (types.HijackedRes
 	attachOptions := types.ContainerAttachOptions{
 		Stdin:  true,
 		Stdout: true,
-		Stderr: true,
 		Stream: true,
 	}
 	return docker.ContainerAttach(ctx, containerID, attachOptions)
@@ -247,7 +246,7 @@ func containerStart(ctx context.Context, containerID string) error {
 	return docker.ContainerStart(ctx, containerID, startOptions)
 }
 
-func handleStreams(ctx context.Context, inputStream io.Reader, outputStream, errorStream io.Writer, attachment types.HijackedResponse) error {
+func handleStreams(ctx context.Context, inputStream io.Reader, outputStream, errorStream *bufio.Writer, attachment types.HijackedResponse) error {
 	var (
 		err error
 	)
@@ -296,6 +295,8 @@ func handleStreams(ctx context.Context, inputStream io.Reader, outputStream, err
 		}
 	case <-ctx.Done():
 	}
+	outputStream.Flush()
+	errorStream.Flush()
 
 	return nil
 }
