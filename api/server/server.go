@@ -35,28 +35,37 @@ const (
 func initDependencies(config Config) error {
 	// ensure all initialization code fails fast on errors; there is no point in
 	// attempting to continue in a degraded state if there are problems at start up
-	if err := initEtcd(config); err != nil {
-		return err
+
+	errors := make(chan error)
+	go func() {
+		errors <- initEtcd(config)
+	}()
+	go func() {
+		errors <- initElasticsearch(config)
+	}()
+	go func() {
+		errors <- initNats(config)
+	}()
+	go func() {
+		errors <- initInfluxDB(config)
+	}()
+	go func() {
+		errors <- initDocker(config)
+	}()
+
+	for i := 0; i < 5; i++ { // 5 is not a magic number, it corresponds to the number of concurrent go routines
+		if err := <-errors; err != nil {
+			return err
+		}
 	}
-	if err := initElasticsearch(config); err != nil {
-		return err
-	}
-	if err := initNats(config); err != nil {
-		return err
-	}
-	if err := initInfluxDB(config); err != nil {
-		return err
-	}
-	if err := initDocker(config); err != nil {
-		return err
-	}
+
 	return nil
 }
 
 // Start starts the server
-func Start(config Config) {
+func Start(config Config) error {
 	if err := initDependencies(config); err != nil {
-		panic(err)
+		return err
 	}
 
 	// register services
@@ -94,7 +103,8 @@ func Start(config Config) {
 		log.Fatalf("amplifer is unable to listen on: %s\n%v", config.Port[1:], err)
 	}
 	log.Printf("amplifier is listening on port %s\n", config.Port[1:])
-	s.Serve(lis)
+	log.Fatalln(s.Serve(lis))
+	return nil
 }
 
 func initEtcd(config Config) error {

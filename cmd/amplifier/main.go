@@ -7,6 +7,7 @@ import (
 	"github.com/appcelerator/amp/api/server"
 	"github.com/appcelerator/amp/config"
 	flag "github.com/spf13/pflag"
+	"log"
 )
 
 const (
@@ -69,5 +70,5 @@ func parseFlags() {
 func main() {
 	fmt.Printf("amplifier (server version: %s, build: %s)\n", Version, Build)
 	parseFlags()
-	server.Start(config)
+	log.Fatalln(server.Start(config))
 }
