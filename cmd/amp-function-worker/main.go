@@ -54,8 +54,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to get hostname: %s", err)
 	}
-	if natsStreaming.Connect(amp.NatsDefaultURL, amp.NatsClusterID, /*os.Args[0]+"-"+hostname*/
-		"dev-worker-"+hostname, amp.DefaultTimeout) != nil {
+	if err := natsStreaming.Connect("nats://127.0.0.1:4222", amp.NatsClusterID /*os.Args[0]+"-"+hostname*/, "dev-worker-"+hostname, amp.DefaultTimeout); err != nil {
 		log.Fatal(err)
 	}
 
@@ -114,6 +113,13 @@ func processMessage(msg *stan.Msg) {
 	}
 	log.Println("Created container:", container.ID)
 
+	// Start
+	if err = containerStart(ctx, container.ID); err != nil {
+		log.Println("error starting container:", err)
+		return
+	}
+	log.Println("Function call executed")
+
 	// Attach container streams
 	attachment, err := containerAttach(ctx, container.ID)
 	if err != nil {
@@ -122,13 +128,6 @@ func processMessage(msg *stan.Msg) {
 	}
 	defer attachment.Close()
 	log.Println("Attached to container:", container.ID)
-
-	// Start
-	if err = containerStart(ctx, container.ID); err != nil {
-		log.Println("error starting container:", err)
-		return
-	}
-	log.Println("Function call executed")
 
 	// Standard input
 	stdIn := bytes.NewReader(functionCall.Input)
@@ -181,7 +180,7 @@ func containerCreate(ctx context.Context, image string) (container.ContainerCrea
 	}
 	hostConfig := &container.HostConfig{}
 	networkingConfig := &network.NetworkingConfig{}
-	return docker.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, stringid.GenerateNonCryptoID())
+	return docker.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, "function"+stringid.GenerateNonCryptoID())
 }
 
 func containerAttach(ctx context.Context, containerID string) (types.HijackedResponse, error) {
@@ -207,7 +206,8 @@ func handleStreams(ctx context.Context, inputStream io.Reader, outputStream, err
 	receiveStdout := make(chan error, 1)
 	if outputStream != nil || errorStream != nil {
 		go func() {
-			_, err = stdcopy.StdCopy(outputStream, errorStream, attachment.Conn)
+			_, err = stdcopy.StdCopy(outputStream, errorStream, attachment.Reader)
+			log.Println("Transfered standard output")
 			receiveStdout <- err
 		}()
 	}
@@ -217,10 +217,10 @@ func handleStreams(ctx context.Context, inputStream io.Reader, outputStream, err
 		if inputStream != nil {
 			io.Copy(attachment.Conn, inputStream)
 		}
-
 		if err := attachment.CloseWrite(); err != nil {
 			log.Printf("Couldn't send EOF: %s\n", err)
 		}
+		log.Println("Transfered standard input")
 		close(stdinDone)
 	}()
 

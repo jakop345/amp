@@ -198,7 +198,15 @@ func getAMPInfrastructureStack(m *ampManager) *ampStack {
 					Constraints: nil,
 				},
 			},
-			EndpointSpec: nil,
+			EndpointSpec: &swarm.EndpointSpec{
+				Mode: swarm.ResolutionModeVIP,
+				Ports: []swarm.PortConfig{
+					{
+						TargetPort:    4222,
+						PublishedPort: 4222,
+					},
+				},
+			},
 			Networks: []swarm.NetworkAttachmentConfig{
 				{
 					Target:  infraPrivateNetwork,
@@ -637,40 +645,40 @@ func getAMPInfrastructureStack(m *ampManager) *ampStack {
 		},
 		"nats", "etcd")
 
-	//add amp-function-worker
-	stack.addService(m, "amp-function-worker", "amp", 1,
-		&swarm.ServiceSpec{
-			Annotations: swarm.Annotations{
-				Labels: map[string]string{
-					"io.amp.role": "infrastructure",
-				},
-			},
-			TaskTemplate: swarm.TaskSpec{
-				ContainerSpec: swarm.ContainerSpec{
-					Args: []string{"amp-function-worker"},
-					Env:  nil,
-					Labels: map[string]string{
-						"io.amp.role": "infrastructure",
-					},
-					Mounts: []mount.Mount{
-						{
-							Type:   mount.TypeBind,
-							Source: "/var/run/docker.sock",
-							Target: "/var/run/docker.sock",
-						},
-					},
-				},
-				Placement: nil,
-			},
-			EndpointSpec: nil,
-			Networks: []swarm.NetworkAttachmentConfig{
-				{
-					Target:  infraPrivateNetwork,
-					Aliases: []string{"amp-function-worker"},
-				},
-			},
-		},
-		"nats")
+	////add amp-function-worker
+	//stack.addService(m, "amp-function-worker", "amp", 1,
+	//	&swarm.ServiceSpec{
+	//		Annotations: swarm.Annotations{
+	//			Labels: map[string]string{
+	//				"io.amp.role": "infrastructure",
+	//			},
+	//		},
+	//		TaskTemplate: swarm.TaskSpec{
+	//			ContainerSpec: swarm.ContainerSpec{
+	//				Args: []string{"amp-function-worker"},
+	//				Env:  nil,
+	//				Labels: map[string]string{
+	//					"io.amp.role": "infrastructure",
+	//				},
+	//				Mounts: []mount.Mount{
+	//					{
+	//						Type:   mount.TypeBind,
+	//						Source: "/var/run/docker.sock",
+	//						Target: "/var/run/docker.sock",
+	//					},
+	//				},
+	//			},
+	//			Placement: nil,
+	//		},
+	//		EndpointSpec: nil,
+	//		Networks: []swarm.NetworkAttachmentConfig{
+	//			{
+	//				Target:  infraPrivateNetwork,
+	//				Aliases: []string{"amp-function-worker"},
+	//			},
+	//		},
+	//	},
+	//	"nats")
 
 	//return stack
 	return &stack
