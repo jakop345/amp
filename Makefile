@@ -51,7 +51,7 @@ LOGWORKER := amp-log-worker
 GATEWAY := amplifier-gateway
 CLUSTERSERVER := cluster-server
 CLUSTERAGENT := cluster-agent
-AMPCLUSTER := amp-cluster
+AMPADM := ampadm
 
 TAG := latest
 IMAGE := $(OWNER)/amp:$(TAG)
@@ -107,7 +107,7 @@ clean:
 	@rm -f $$(which $(GATEWAY)) ./$(GATEWAY)
 	@rm -f $$(which $(CLUSTERSERVER)) ./$(CLUSTERSERVER)
 	@rm -f $$(which $(CLUSTERAGENT)) ./$(CLUSTERAGENT)
-	@rm -f $$(which $(AMPCLUSTER)) ./$(AMPCLUSTER)
+	@rm -f $$(which $(AMPADM)) ./$(AMPADM)
 
 install:
 	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(CLI)
@@ -117,7 +117,7 @@ install:
 	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(GATEWAY)
 	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(CLUSTERSERVER)
 	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(CLUSTERAGENT)
-	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(AMPCLUSTER)
+	@go install $(LDFLAGS) $(REPO)/$(CMDDIR)/$(AMPADM)
 
 build:
 	@hack/build $(CLI)
@@ -127,7 +127,7 @@ build:
 	@hack/build $(GATEWAY)
 	@hack/build $(CLUSTERAGENT)
 	@hack/build $(CLUSTERSERVER)
-	@hack/build $(AMPCLUSTER)
+	@hack/build $(AMPADM)
 
 build-server-image:
 	@docker build --build-arg BUILD=$(BUILD) -t appcelerator/$(SERVER):$(TAG) .
@@ -156,32 +156,32 @@ build-server-windows:
 	@rm -f $(SERVER).exe
 	@env GOOS=windows GOARCH=amd64 VERSION=$(VERSION) BUILD=$(BUILD) hack/build $(SERVER)
 
-build-clustercli-linux:
-	@rm -f $(AMPCLUSTER)
-	@env GOOS=linux GOARCH=amd64 VERSION=$(VERSION) BUILD=$(BUILD) hack/build $(AMPCLUSTER)
+build-ampadm-linux:
+	@rm -f $(AMPADM)
+	@env GOOS=linux GOARCH=amd64 VERSION=$(VERSION) BUILD=$(BUILD) hack/build $(AMPADM)
 
-build-clustercli-darwin:
-	@rm -f $(AMPCLUSTER)
-	@env GOOS=darwin GOARCH=amd64 VERSION=$(VERSION) BUILD=$(BUILD) hack/build $(AMPCLUSTER)
+build-ampadm-darwin:
+	@rm -f $(AMPADM)
+	@env GOOS=darwin GOARCH=amd64 VERSION=$(VERSION) BUILD=$(BUILD) hack/build $(AMPADM)
 
-build-clustercli-windows:
-	@rm -f $(AMPCLUSTER).exe
-	@env GOOS=windows GOARCH=amd64 VERSION=$(VERSION) BUILD=$(BUILD) hack/build $(AMPCLUSTER)
+build-ampadm-windows:
+	@rm -f $(AMPADM).exe
+	@env GOOS=windows GOARCH=amd64 VERSION=$(VERSION) BUILD=$(BUILD) hack/build $(AMPADM)
 	
-dist-linux: build-cli-linux build-server-linux build-clustercli-linux
+dist-linux: build-cli-linux build-server-linux build-ampadm-linux
 	@rm -f dist/Linux/x86_64/amp-$(VERSION).tgz
 	@mkdir -p dist/Linux/x86_64
-	@tar czf dist/Linux/x86_64/amp-$(VERSION).tgz $(CLI) $(SERVER) $(AMPCLUSTER)
+	@tar czf dist/Linux/x86_64/amp-$(VERSION).tgz $(CLI) $(SERVER) $(AMPADM)
 
-dist-darwin: build-cli-darwin build-server-darwin build-clustercli-darwin
+dist-darwin: build-cli-darwin build-server-darwin build-ampadm-darwin
 	@rm -f dist/Darwin/x86_64/amp-$(VERSION).tgz
 	@mkdir -p dist/Darwin/x86_64
-	@tar czf dist/Darwin/x86_64/amp-$(VERSION).tgz $(CLI) $(SERVER) $(AMPCLUSTER)
+	@tar czf dist/Darwin/x86_64/amp-$(VERSION).tgz $(CLI) $(SERVER) $(AMPADM)
 
-dist-windows: build-cli-windows build-server-windows build-clustercli-windows
+dist-windows: build-cli-windows build-server-windows build-ampadm-windows
 	@rm -f dist/Windows/x86_64/amp-$(VERSION).zip
 	@mkdir -p dist/Windows/x86_64
-	@zip -q dist/Windows/x86_64/amp-$(VERSION).zip $(CLI).exe $(SERVER).exe $(AMPCLUSTER).exe
+	@zip -q dist/Windows/x86_64/amp-$(VERSION).zip $(CLI).exe $(SERVER).exe $(AMPADM).exe
 
 dist: dist-linux dist-darwin dist-windows
 
