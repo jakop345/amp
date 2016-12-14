@@ -80,9 +80,13 @@ version:
 
 install-deps:
 	@$(GLIDE_INSTALL)
+    # temporary fix to trace conflict
+	@rm -rf vendor/github.com/docker/docker/vendor/golang.org/x/net/trace
 
 update-deps:
 	@$(GLIDE_UPDATE)
+    # temporary fix to trace conflict
+	@rm -rf vendor/github.com/docker/docker/vendor/golang.org/x/net/trace
 
 proto: $(PROTOFILES)
 	@go run hack/proto.go
