@@ -9,6 +9,7 @@ import (
 )
 
 func main() {
+	log.Println("Waiting for stdin")
 	input, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
 		log.Fatal("Unable to read standard input", err)

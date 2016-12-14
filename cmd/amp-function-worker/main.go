@@ -19,6 +19,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 )
 
 // ## `amp-function-worker`
@@ -49,30 +50,76 @@ var (
 func main() {
 	log.Printf("%s (version: %s, build: %s)\n", os.Args[0], Version, Build)
 
-	// NATS Connect
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Fatalf("Unable to get hostname: %s", err)
-	}
-	if err := natsStreaming.Connect("nats://127.0.0.1:4222", amp.NatsClusterID /*os.Args[0]+"-"+hostname*/, "dev-worker-"+hostname, amp.DefaultTimeout); err != nil {
-		log.Fatal(err)
-	}
-
-	// NATS, subscribe to function topic
-	_, err = natsStreaming.GetClient().Subscribe(amp.NatsFunctionTopic, messageHandler, stan.DeliverAllAvailable())
-	if err != nil {
-		natsStreaming.Close()
-		log.Fatalf("Unable to subscribe to %s topic: %s", amp.NatsFunctionTopic, err)
-	}
-	log.Println("Subscribed to topic:", amp.NatsFunctionTopic)
+	//// NATS Connect
+	//hostname, err := os.Hostname()
+	//if err != nil {
+	//	log.Fatalf("Unable to get hostname: %s", err)
+	//}
+	//if err := natsStreaming.Connect("nats://127.0.0.1:4222", amp.NatsClusterID /*os.Args[0]+"-"+hostname*/, "dev-worker-" + hostname, amp.DefaultTimeout); err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//// NATS, subscribe to function topic
+	//_, err = natsStreaming.GetClient().Subscribe(amp.NatsFunctionTopic, messageHandler, stan.DeliverAllAvailable())
+	//if err != nil {
+	//	natsStreaming.Close()
+	//	log.Fatalf("Unable to subscribe to %s topic: %s", amp.NatsFunctionTopic, err)
+	//}
+	//log.Println("Subscribed to topic:", amp.NatsFunctionTopic)
 
 	// Docker
+	var err error
 	log.Printf("connecting to Docker API at %s version API: %s\n", amp.DockerDefaultURL, amp.DockerDefaultVersion)
 	docker, err = client.NewClient(amp.DockerDefaultURL, amp.DockerDefaultVersion, nil, nil)
 	if err != nil {
 		log.Fatalln("Unable to connect to docker", err)
 	}
 	log.Printf("Connected to Docker at %s\n", amp.DockerDefaultURL)
+
+	ctx := context.Background()
+
+	// Create container
+	container, err := containerCreate(ctx, "appcelerator/amp-demo-function")
+	if err != nil {
+		log.Println("error creating container:", err)
+		return
+	}
+	log.Println("Created container:", container.ID)
+
+	// Start
+	if err = containerStart(ctx, container.ID); err != nil {
+		log.Println("error starting container:", err)
+		return
+	}
+	log.Println("Function call executed")
+
+	// Attach container streams
+	attachment, err := containerAttach(ctx, container.ID)
+	if err != nil {
+		log.Println("error attaching container:", err)
+		return
+	}
+	defer attachment.Close()
+	log.Println("Attached to container:", container.ID)
+
+	// Standard input
+	stdIn := strings.NewReader(`This is a test input`)
+
+	// Standard output
+	var stdOutBuffer bytes.Buffer
+	stdOut := bufio.NewWriter(&stdOutBuffer)
+
+	// Standard error
+	var stdErrorBuffer bytes.Buffer
+	stdErr := bufio.NewWriter(&stdErrorBuffer)
+
+	// Handle standard streams
+	streamCtx, cancel := context.WithTimeout(ctx, amp.DefaultTimeout/2)
+	defer cancel()
+	handleStreams(streamCtx, stdIn, stdOut, stdErr, attachment)
+	stdOut.Flush()
+	stdErr.Flush()
+	log.Println("output:", string(stdOutBuffer.Bytes()))
 
 	// Wait for a SIGINT (perhaps triggered by user with CTRL-C)
 	// Run cleanup when signal is received
@@ -130,7 +177,7 @@ func processMessage(msg *stan.Msg) {
 	log.Println("Attached to container:", container.ID)
 
 	// Standard input
-	stdIn := bytes.NewReader(functionCall.Input)
+	stdIn := bufio.NewReader(strings.NewReader(`This is a test input`))
 
 	// Standard output
 	var stdOutBuffer bytes.Buffer
@@ -144,6 +191,8 @@ func processMessage(msg *stan.Msg) {
 	streamCtx, cancel := context.WithTimeout(ctx, amp.DefaultTimeout/2)
 	defer cancel()
 	handleStreams(streamCtx, stdIn, stdOut, stdErr, attachment)
+	stdOut.Flush()
+	stdErr.Flush()
 
 	// Post response to NATS
 	functionReturn := function.FunctionReturn{
@@ -215,7 +264,11 @@ func handleStreams(ctx context.Context, inputStream io.Reader, outputStream, err
 	stdinDone := make(chan struct{})
 	go func() {
 		if inputStream != nil {
-			io.Copy(attachment.Conn, inputStream)
+			written, err := io.Copy(attachment.Conn, inputStream)
+			if err != nil {
+				log.Printf("Couldn't copy input stream: %s\n", err)
+			}
+			log.Println("written", written)
 		}
 		if err := attachment.CloseWrite(); err != nil {
 			log.Printf("Couldn't send EOF: %s\n", err)
