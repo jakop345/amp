@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"github.com/appcelerator/amp/api/rpc/function"
 	"github.com/appcelerator/amp/config"
@@ -9,12 +10,12 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/docker/pkg/stringid"
 	"github.com/golang/protobuf/proto"
 	"github.com/nats-io/go-nats-streaming"
 	"golang.org/x/net/context"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -53,7 +54,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to get hostname: %s", err)
 	}
-	if natsStreaming.Connect(amp.NatsDefaultURL, amp.NatsClusterID, os.Args[0]+"-"+hostname, amp.DefaultTimeout) != nil {
+	if natsStreaming.Connect(amp.NatsDefaultURL, amp.NatsClusterID, /*os.Args[0]+"-"+hostname*/
+		"dev-worker-"+hostname, amp.DefaultTimeout) != nil {
 		log.Fatal(err)
 	}
 
@@ -118,16 +120,8 @@ func processMessage(msg *stan.Msg) {
 		log.Println("error attaching container:", err)
 		return
 	}
+	defer attachment.Close()
 	log.Println("Attached to container:", container.ID)
-
-	// Write function call input to container standard input
-	inputStream := bytes.NewReader(functionCall.Input)
-	written, err := io.Copy(attachment.Conn, inputStream)
-	if err != nil {
-		log.Println("Unable to write to input stream:", err)
-		return
-	}
-	log.Println("bytes written:", written)
 
 	// Start
 	if err = containerStart(ctx, container.ID); err != nil {
@@ -136,37 +130,29 @@ func processMessage(msg *stan.Msg) {
 	}
 	log.Println("Function call executed")
 
-	// Close the attachment
-	if err := attachment.CloseWrite(); err != nil {
-		log.Println("Unable to close attachment:", err)
-		return
-	}
-	log.Println("attachment successfully closed")
+	// Standard input
+	stdIn := bytes.NewReader(functionCall.Input)
 
-	// Eat 8 bytes of header on the standard output of the process
-	for i := 0; i < 8; i++ {
-		if _, err := attachment.Reader.ReadByte(); err != nil {
-			log.Println("Unable to read from output stream:", err)
-			return
-		}
-	}
+	// Standard output
+	var stdOutBuffer bytes.Buffer
+	stdOut := bufio.NewWriter(&stdOutBuffer)
 
-	// Read standard output until it ends
-	output, err := ioutil.ReadAll(attachment.Reader)
-	if err != nil {
-		log.Println("Unable to read from output stream:", err)
-		return
-	}
-	read := len(output)
-	log.Println("bytes read:", read)
-	attachment.Close()
+	// Standard error
+	var stdErrorBuffer bytes.Buffer
+	stdErr := bufio.NewWriter(&stdErrorBuffer)
+
+	// Handle standard streams
+	streamCtx, cancel := context.WithTimeout(ctx, amp.DefaultTimeout/2)
+	defer cancel()
+	handleStreams(streamCtx, stdIn, stdOut, stdErr, attachment)
 
 	// Post response to NATS
 	functionReturn := function.FunctionReturn{
 		CallID:     functionCall.CallID,
 		FunctionID: functionCall.FunctionID,
-		Output:     output,
+		Output:     stdOutBuffer.Bytes(),
 	}
+	log.Println("output len", len(functionReturn.Output))
 
 	// Encode the proto object
 	encoded, err := proto.Marshal(&functionReturn)
@@ -190,6 +176,7 @@ func containerCreate(ctx context.Context, image string) (container.ContainerCrea
 		OpenStdin:    true,
 		AttachStdin:  true,
 		AttachStdout: true,
+		AttachStderr: true,
 		StdinOnce:    true,
 	}
 	hostConfig := &container.HostConfig{}
@@ -201,6 +188,7 @@ func containerAttach(ctx context.Context, containerID string) (types.HijackedRes
 	attachOptions := types.ContainerAttachOptions{
 		Stdin:  true,
 		Stdout: true,
+		Stderr: true,
 		Stream: true,
 	}
 	return docker.ContainerAttach(ctx, containerID, attachOptions)
@@ -209,4 +197,52 @@ func containerAttach(ctx context.Context, containerID string) (types.HijackedRes
 func containerStart(ctx context.Context, containerID string) error {
 	startOptions := types.ContainerStartOptions{}
 	return docker.ContainerStart(ctx, containerID, startOptions)
+}
+
+func handleStreams(ctx context.Context, inputStream io.Reader, outputStream, errorStream io.Writer, attachment types.HijackedResponse) error {
+	var (
+		err error
+	)
+
+	receiveStdout := make(chan error, 1)
+	if outputStream != nil || errorStream != nil {
+		go func() {
+			_, err = stdcopy.StdCopy(outputStream, errorStream, attachment.Conn)
+			receiveStdout <- err
+		}()
+	}
+
+	stdinDone := make(chan struct{})
+	go func() {
+		if inputStream != nil {
+			io.Copy(attachment.Conn, inputStream)
+		}
+
+		if err := attachment.CloseWrite(); err != nil {
+			log.Printf("Couldn't send EOF: %s\n", err)
+		}
+		close(stdinDone)
+	}()
+
+	select {
+	case err := <-receiveStdout:
+		if err != nil {
+			log.Printf("Error receiveStdout: %s\n", err)
+			return err
+		}
+	case <-stdinDone:
+		if outputStream != nil || errorStream != nil {
+			select {
+			case err := <-receiveStdout:
+				if err != nil {
+					log.Printf("Error receiveStdout: %s\n", err)
+					return err
+				}
+			case <-ctx.Done():
+			}
+		}
+	case <-ctx.Done():
+	}
+
+	return nil
 }
