@@ -78,39 +78,8 @@
           "Storage"
         ]
       },
-      "post": {
-        "operationId": "Create",
-        "responses": {
-          "200": {
-            "description": "",
-            "schema": {
-              "$ref": "#/definitions/storageStorageResponse"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "key",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "format": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/storageCreateStorage"
-            }
-          }
-        ],
-        "tags": [
-          "Storage"
-        ]
-      },
       "put": {
-        "operationId": "Update",
+        "operationId": "Put",
         "responses": {
           "200": {
             "description": "",
@@ -132,7 +101,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/storageUpdateStorage"
+              "$ref": "#/definitions/storagePutStorage"
             }
           }
         ],
@@ -143,20 +112,6 @@
     }
   },
   "definitions": {
-    "storageCreateStorage": {
-      "type": "object",
-      "properties": {
-        "key": {
-          "type": "string",
-          "format": "string"
-        },
-        "val": {
-          "type": "string",
-          "format": "string"
-        }
-      },
-      "title": "struct for create storage request function"
-    },
     "storageDeleteStorage": {
       "type": "object",
       "properties": {
@@ -193,6 +148,20 @@
       "type": "object",
       "title": "struct for list storage request function"
     },
+    "storagePutStorage": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "format": "string"
+        },
+        "val": {
+          "type": "string",
+          "format": "string"
+        }
+      },
+      "title": "struct for put storage request function"
+    },
     "storageStorageInfo": {
       "type": "object",
       "properties": {
@@ -220,20 +189,6 @@
         }
       },
       "title": "struct for storage object key response"
-    },
-    "storageUpdateStorage": {
-      "type": "object",
-      "properties": {
-        "key": {
-          "type": "string",
-          "format": "string"
-        },
-        "val": {
-          "type": "string",
-          "format": "string"
-        }
-      },
-      "title": "struct for update storage request function"
     }
   }
 }

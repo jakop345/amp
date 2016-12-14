@@ -5,9 +5,9 @@ package storage;
 import "google/api/annotations.proto";
 
 service Storage {
-  rpc Create (CreateStorage) returns (StorageResponse) {
+  rpc Put (PutStorage) returns (StorageResponse) {
     option (google.api.http) = {
-      post: "/v1/storage/{key}",
+      put: "/v1/storage/{key}",
       body: "*"
     };
   };
@@ -21,23 +21,11 @@ service Storage {
       delete: "/v1/storage/{key}"
     };
   };
-  rpc Update (UpdateStorage) returns (StorageResponse) {
-    option (google.api.http) = {
-      put: "/v1/storage/{key}",
-      body: "*"
-    };
-  };
   rpc List (ListStorage) returns (ListResponse) {
     option (google.api.http) = {
       get: "/v1/storage"
     };
   };
-}
-
-// struct for create storage request function
-message CreateStorage {
-  string key = 1;
-  string val = 2;
 }
 
 // struct for get storage request function
@@ -50,8 +38,8 @@ message DeleteStorage {
   string key = 1;
 }
 
-// struct for update storage request function
-message UpdateStorage {
+// struct for put storage request function
+message PutStorage {
   string key = 1;
   string val = 2;
 }

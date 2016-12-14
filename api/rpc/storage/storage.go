@@ -16,8 +16,8 @@ type Server struct {
 	Store storage.Interface
 }
 
-// Create implements Server API for Create Storage service
-func (s *Server) Create(ctx context.Context, in *CreateStorage) (*StorageResponse, error) {
+// Put implements Server API for Put Storage service
+func (s *Server) Put(ctx context.Context, in *PutStorage) (*StorageResponse, error) {
 	//verify if key-value pair does not already exist
 	getStorage := s.getStorageByKey(ctx, in.Key)
 	if getStorage.Val != "" {
@@ -29,9 +29,10 @@ func (s *Server) Create(ctx context.Context, in *CreateStorage) (*StorageRespons
 		Val: in.Val,
 	}
 	//save storage data in ETCD
-	if err := s.Store.Create(ctx, path.Join(storageRootKey, in.Key), storage, nil, 0); err != nil {
+	if err := s.Store.Put(ctx, path.Join(storageRootKey, in.Key), storage, 0); err != nil {
 		return nil, err
 	}
+
 	return storage, nil
 }
 
@@ -66,22 +67,22 @@ func (s *Server) Delete(ctx context.Context, in *DeleteStorage) (*StorageRespons
 }
 
 // Update implements Server API for Update Storage service
-func (s *Server) Update(ctx context.Context, in *UpdateStorage) (*StorageResponse, error) {
-	//verify if key-value pair does not already exist
-	getStorage := s.getStorageByKey(ctx, in.Key)
-	if getStorage.Val == "" {
-		return nil, fmt.Errorf("Storage key %s does not exist", in.Key)
-	}
-	//set value for storageResponse
-	storage := &StorageResponse{
-		Key: in.Key,
-		Val: in.Val,
-	}
-	//update storage data in ETCD
-	s.Store.Update(ctx, path.Join(storageRootKey, in.Key), storage, 0)
-
-	return storage, nil
-}
+// func (s *Server) Update(ctx context.Context, in *UpdateStorage) (*StorageResponse, error) {
+// 	//verify if key-value pair does not already exist
+// 	getStorage := s.getStorageByKey(ctx, in.Key)
+// 	if getStorage.Val == "" {
+// 		return nil, fmt.Errorf("Storage key %s does not exist", in.Key)
+// 	}
+// 	//set value for storageResponse
+// 	storage := &StorageResponse{
+// 		Key: in.Key,
+// 		Val: in.Val,
+// 	}
+// 	//update storage data in ETCD
+// 	s.Store.Update(ctx, path.Join(storageRootKey, in.Key), storage, 0)
+//
+// 	return storage, nil
+// }
 
 // List implements Server API for List Storage service
 func (s *Server) List(ctx context.Context, in *ListStorage) (*ListResponse, error) {
